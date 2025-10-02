@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>593</width>
-    <height>403</height>
+    <width>628</width>
+    <height>406</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -43,7 +43,7 @@
      <number>0</number>
     </property>
     <item>
-     <layout class="QHBoxLayout" name="horizontalLayout">
+     <layout class="QHBoxLayout" name="horizontalLayout_3">
       <property name="spacing">
        <number>0</number>
       </property>
@@ -56,10 +56,10 @@
       <property name="rightMargin">
        <number>0</number>
       </property>
-      <item alignment="Qt::AlignmentFlag::AlignLeft">
-       <widget class="QTreeWidget" name="treeScripts">
+      <item>
+       <widget class="QWidget" name="sidebar" native="true">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+         <sizepolicy hsizetype="Preferred" vsizetype="Ignored">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -67,7 +67,7 @@
         <property name="minimumSize">
          <size>
           <width>150</width>
-          <height>0</height>
+          <height>300</height>
          </size>
         </property>
         <property name="maximumSize">
@@ -76,23 +76,130 @@
           <height>16777215</height>
          </size>
         </property>
-        <property name="indentation">
-         <number>20</number>
+        <property name="layoutDirection">
+         <enum>Qt::LayoutDirection::LeftToRight</enum>
         </property>
-        <attribute name="headerDefaultSectionSize">
-         <number>100</number>
-        </attribute>
-        <column>
-         <property name="text">
-          <string notr="true">Scripts</string>
-         </property>
-        </column>
+        <layout class="QVBoxLayout" name="verticalLayout_3">
+         <item>
+          <layout class="QVBoxLayout" name="verticalLayout">
+           <item>
+            <widget class="QLineEdit" name="lineEdit"/>
+           </item>
+           <item>
+            <widget class="QTreeWidget" name="treeScripts">
+             <column>
+              <property name="text">
+               <string>Liste des scripts disponibles</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label">
+             <property name="text">
+              <string>TextLabel</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QListWidget" name="listWidget"/>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="mainContent" native="true">
+        <layout class="QVBoxLayout" name="verticalLayout_4">
+         <item>
+          <widget class="QTabWidget" name="tabWidget">
+           <property name="currentIndex">
+            <number>0</number>
+           </property>
+           <widget class="QWidget" name="tab">
+            <attribute name="title">
+             <string>Tab 1</string>
+            </attribute>
+           </widget>
+           <widget class="QWidget" name="tab_2">
+            <attribute name="title">
+             <string>Tab 2</string>
+            </attribute>
+           </widget>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </item>
      </layout>
     </item>
    </layout>
   </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>628</width>
+     <height>33</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFichier">
+    <property name="title">
+     <string>Fichier</string>
+    </property>
+    <addaction name="actionOuvrir"/>
+    <addaction name="actionEnregistrer"/>
+    <addaction name="actionQuitter"/>
+   </widget>
+   <widget class="QMenu" name="menu_dition">
+    <property name="title">
+     <string>Édition</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuAffichage">
+    <property name="title">
+     <string>Affichage</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuOutils">
+    <property name="title">
+     <string>Outils</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuFen_tre">
+    <property name="title">
+     <string>Fenêtre</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuAide">
+    <property name="title">
+     <string>Aide</string>
+    </property>
+   </widget>
+   <addaction name="menuFichier"/>
+   <addaction name="menu_dition"/>
+   <addaction name="menuAffichage"/>
+   <addaction name="menuOutils"/>
+   <addaction name="menuFen_tre"/>
+   <addaction name="menuAide"/>
+  </widget>
+  <action name="actionOuvrir">
+   <property name="text">
+    <string>Ouvrir</string>
+   </property>
+  </action>
+  <action name="actionEnregistrer">
+   <property name="text">
+    <string>Enregistrer</string>
+   </property>
+  </action>
+  <action name="actionQuitter">
+   <property name="text">
+    <string>Quitter</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>
