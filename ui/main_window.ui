@@ -97,7 +97,7 @@
            <item>
             <widget class="QLabel" name="label">
              <property name="text">
-              <string>TextLabel</string>
+              <string>Script(s) actif(s)</string>
              </property>
             </widget>
            </item>

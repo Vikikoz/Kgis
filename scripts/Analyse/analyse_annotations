@@ -1,0 +1,315 @@
+import cv2
+from pathlib import Path
+import json
+import numpy as np
+import ctypes
+from PIL import Image, ImageDraw, ImageFont
+import os
+import glob
+import shutil
+
+# ------------------- PARAMÈTRES -------------------
+images_dir = r"C:\Users\vkzk2\Documents\dataset\raw\ready_to_train\images"
+labels_dir = r"C:\Users\vkzk2\Documents\dataset\raw\ready_to_train\labels"
+json_file = r"C:\Users\vkzk2\Documents\dataset\raw\ready_to_train\notes.json"
+
+# Nouveau chemin pour stocker les sessions
+sessions_dir = r"C:\Users\vkzk2\Documents\dataset\sessions"
+os.makedirs(sessions_dir, exist_ok=True)
+
+# couleurs BGR pour affichage OpenCV
+class_colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0)]
+highlight_color = (0, 255, 255)
+
+# PIL font
+pil_font_path = "C:/Windows/Fonts/arial.ttf"
+pil_font_size = 16
+try:
+    pil_font = ImageFont.truetype(pil_font_path, pil_font_size)
+except Exception:
+    pil_font = ImageFont.load_default()
+
+# ------------------- CHARGEMENT CATEGORIES -------------------
+with open(json_file, "r", encoding="utf-8") as f:
+    data = json.load(f)
+categories = data.get("categories", [])
+id_to_name = {cat["id"]: cat["name"] for cat in categories}
+
+# ------------------- LISTE DES IMAGES AVEC ANNOTATIONS -------------------
+image_files = sorted([f for f in Path(images_dir).glob("*") if f.suffix.lower() in [".jpg", ".png"]])
+annotated_images = []
+for f in image_files:
+    lbl = Path(labels_dir) / f"{f.stem}.txt"
+    if lbl.exists() and lbl.stat().st_size > 0:
+        annotated_images.append((f, lbl))
+
+if not annotated_images:
+    print("⚠️ Aucune image avec annotations trouvée.")
+    exit(0)
+
+# ------------------- FONCTIONS -------------------
+def parse_yolo_label(label_path):
+    rels = []
+    with open(label_path, "r", encoding="utf-8") as f:
+        for ln in f:
+            parts = ln.strip().split()
+            if not parts:
+                continue
+            cls = int(parts[0])
+            try:
+                xc = float(parts[1])
+                yc = float(parts[2])
+                w = float(parts[3])
+                h = float(parts[4])
+            except Exception:
+                continue
+            rels.append({"cls": cls, "xc": xc, "yc": yc, "w": w, "h": h})
+    return rels
+
+def rels_to_abs(rels, disp_w, disp_h):
+    abs_list = []
+    for r in rels:
+        xc = r["xc"] * disp_w
+        yc = r["yc"] * disp_h
+        bw = r["w"] * disp_w
+        bh = r["h"] * disp_h
+        x_min = int(round(xc - bw / 2.0))
+        y_min = int(round(yc - bh / 2.0))
+        x_max = int(round(xc + bw / 2.0))
+        y_max = int(round(yc + bh / 2.0))
+        x_min = max(0, x_min)
+        y_min = max(0, y_min)
+        x_max = min(disp_w - 1, x_max)
+        y_max = min(disp_h - 1, y_max)
+        abs_list.append({"cls": r["cls"], "coords": (x_min, y_min, x_max, y_max)})
+    return abs_list
+
+def draw_bboxes(cv_img, abs_bboxes, selected_idx=None):
+    for i, bb in enumerate(abs_bboxes):
+        x_min, y_min, x_max, y_max = bb["coords"]
+        cls = bb["cls"]
+        color = highlight_color if i == selected_idx else class_colors[cls % len(class_colors)]
+        cv2.rectangle(cv_img, (x_min, y_min), (x_max, y_max), color, 2, lineType=cv2.LINE_AA)
+        label = id_to_name.get(cls, str(cls))
+        (tw, th), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        rect_x1 = x_min
+        rect_y1 = max(0, y_min - th - baseline - 4)
+        rect_x2 = x_min + tw + 6
+        rect_y2 = y_min
+        cv2.rectangle(cv_img, (rect_x1, rect_y1), (rect_x2, rect_y2), (0,0,0), cv2.FILLED)
+        cv2.putText(cv_img, label, (x_min + 3, y_min - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, lineType=cv2.LINE_AA)
+    return cv_img
+
+def list_sessions():
+    files = sorted(glob.glob(os.path.join(sessions_dir, "correction_*.json")))
+    return files
+
+def export_corrected_dataset(out_dir, annotated_images, memory_rels, categories):
+    images_out = Path(out_dir) / "images"
+    labels_out = Path(out_dir) / "labels"
+    images_out.mkdir(parents=True, exist_ok=True)
+    labels_out.mkdir(parents=True, exist_ok=True)
+
+    for i, (img_path, lbl_path) in enumerate(annotated_images):
+        shutil.copy(img_path, images_out / img_path.name)
+        rels = memory_rels[i]
+        with open(labels_out / f"{img_path.stem}.txt", "w", encoding="utf-8") as f:
+            for r in rels:
+                f.write(f"{r['cls']} {r['xc']} {r['yc']} {r['w']} {r['h']}\n")
+
+    # créer classes.txt pour YOLO
+    classes_file = Path(out_dir) / "classes.txt"
+    sorted_categories = sorted(categories, key=lambda c: c['id'])
+    with open(classes_file, "w", encoding="utf-8") as f:
+        for cat in sorted_categories:
+            f.write(cat['name'] + "\n")
+
+    print(f"✅ Nouveau dataset corrigé créé dans {out_dir} (avec classes.txt)")
+
+# ------------------- CHOIX DE SESSION -------------------
+print("1 : Continuer une correction existante")
+print("2 : Nouvelle correction")
+choice = input("👉 Choix (1/2) : ").strip()
+
+if choice == "1":
+    files = list_sessions()
+    if not files:
+        print("❌ Aucune session existante, création d'une nouvelle correction.")
+        choice = "2"
+    else:
+        print("Sessions existantes :")
+        for i, f in enumerate(files):
+            print(f"{i+1} : {os.path.basename(f)}")
+        sel = int(input("Numéro de la session à reprendre : ")) - 1
+        state_file = files[sel]
+        with open(state_file, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        memory_rels = saved["memory_rels"]
+        deleted_rels = saved["deleted_rels"]
+        idx = saved.get("idx", 0)
+        print(f"✅ Session {os.path.basename(state_file)} chargée.")
+
+if choice == "2":
+    files = list_sessions()
+    num = len(files) + 1
+    state_file = os.path.join(sessions_dir, f"correction_{num}.json")
+    memory_rels = [parse_yolo_label(lbl) for _, lbl in annotated_images]
+    deleted_rels = [[] for _ in annotated_images]
+    idx = 0
+    print(f"✅ Nouvelle session créée : {os.path.basename(state_file)}")
+
+# ------------------- DÉTECTION RÉSO ÉCRAN -------------------
+user32 = ctypes.windll.user32
+screen_w, screen_h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+sidebar_width = int(screen_w * 0.18)
+main_width = screen_w - sidebar_width
+
+# ------------------- BOUCLE PRINCIPALE -------------------
+total = len(annotated_images)
+show_boxes = True
+selected_box_idx = 0
+mode_deleted = False
+
+cv2.namedWindow("QA Viewer", cv2.WINDOW_NORMAL)
+hwnd = ctypes.windll.user32.FindWindowW(None, "QA Viewer")
+ctypes.windll.user32.ShowWindow(hwnd, 3)
+
+while True:
+    img_path, lbl_path = annotated_images[idx]
+    orig_img = cv2.imread(str(img_path))
+    if orig_img is None:
+        idx = (idx + 1) % total
+        continue
+
+    h0, w0 = orig_img.shape[:2]
+    scale = min(main_width / w0, screen_h / h0)
+    disp_w, disp_h = int(w0 * scale), int(h0 * scale)
+    resized_img = cv2.resize(orig_img, (disp_w, disp_h), interpolation=cv2.INTER_AREA)
+
+    rel_list = deleted_rels[idx] if mode_deleted else memory_rels[idx]
+    abs_bboxes = rels_to_abs(rel_list, disp_w, disp_h)
+
+    if abs_bboxes:
+        selected_box_idx = max(0, min(selected_box_idx, len(abs_bboxes)-1))
+    else:
+        selected_box_idx = 0
+
+    display_img = resized_img.copy()
+    if show_boxes:
+        draw_bboxes(display_img, abs_bboxes, selected_idx=selected_box_idx if abs_bboxes else None)
+
+    canvas = np.zeros((screen_h, screen_w, 3), dtype=np.uint8)
+    x_offset = 0
+    y_offset = (screen_h - disp_h) // 2
+    canvas[y_offset:y_offset+disp_h, x_offset:x_offset+disp_w] = display_img
+
+    # ------------------- SIDEBAR -------------------
+    canvas_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(canvas_rgb)
+    draw = ImageDraw.Draw(pil_img)
+
+    sidebar_x = disp_w + 12
+    y = 18
+    line_height = pil_font_size + 8
+
+    info_lines = [
+        f"Fichier : {img_path.name}",
+        f"Image {idx+1}/{total}",
+        f"Afficher boxes : {'Oui' if show_boxes else 'Non'}",
+        f"Mode affiché : {'Supprimées' if mode_deleted else 'Visibles'}",
+        f"BBox sélectionnée : {selected_box_idx+1 if abs_bboxes else 0}/{len(abs_bboxes)}"
+    ]
+    for ln in info_lines:
+        draw.text((sidebar_x, y), ln, font=pil_font, fill=(230,230,230))
+        y += line_height
+
+    y += 6
+    draw.text((sidebar_x, y), "Légende classes :", font=pil_font, fill=(180,180,180))
+    y += line_height
+    for cat in categories:
+        cls = cat.get("id", 0)
+        name = cat.get("name", str(cls))
+        col_bgr = class_colors[cls % len(class_colors)]
+        col_rgb = (col_bgr[2], col_bgr[1], col_bgr[0])
+        draw.text((sidebar_x, y), f"{cls}. {name}", font=pil_font, fill=col_rgb)
+        y += line_height
+
+    y += 6
+    draw.text((sidebar_x, y), "Touches :", font=pil_font, fill=(180,180,180))
+    y += line_height
+    key_lines = [
+        "n : image suivante",
+        "p : image précédente",
+        "j : bbox suivante",
+        "k : bbox précédente",
+        "x : supprimer bbox sélectionnée (mode Visible)",
+        "u : remettre bbox sélectionnée (mode Supprimées)",
+        "m : switch mode visible/supprimées",
+        "b : afficher/masquer boxes",
+        "e : exporter dataset corrigé",
+        "ESC : quitter"
+    ]
+    for kl in key_lines:
+        draw.text((sidebar_x, y), kl, font=pil_font, fill=(230,230,230))
+        y += line_height
+
+    rect_w, rect_h = 48, 26
+    rect_x = sidebar_x
+    rect_y = screen_h - rect_h - 14
+    mode_color = (0, 255, 0) if not mode_deleted else (255, 0, 0)
+    mode_color_rgb = (mode_color[2], mode_color[1], mode_color[0])
+    draw.rectangle([rect_x, rect_y, rect_x + rect_w, rect_y + rect_h], fill=mode_color_rgb)
+    draw.text((rect_x + rect_w + 8, rect_y + 4), "Mode suppressions" if mode_deleted else "Mode normal", font=pil_font, fill=(255,255,255))
+
+    canvas = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    cv2.imshow("QA Viewer", canvas)
+
+    key = cv2.waitKey(0) & 0xFF
+    if key == 27:  # ESC
+        break
+    elif key == ord('b'):
+        show_boxes = not show_boxes
+    elif key == ord('n'):
+        idx = (idx + 1) % total
+        selected_box_idx = 0
+    elif key == ord('p'):
+        idx = (idx - 1) % total
+        selected_box_idx = 0
+    elif key == ord('j'):
+        if abs_bboxes:
+            selected_box_idx = (selected_box_idx + 1) % len(abs_bboxes)
+    elif key == ord('k'):
+        if abs_bboxes:
+            selected_box_idx = (selected_box_idx - 1) % len(abs_bboxes)
+    elif key == ord('m'):
+        mode_deleted = not mode_deleted
+        selected_box_idx = 0
+    elif key == ord('x') and not mode_deleted:
+        if selected_box_idx < len(memory_rels[idx]):
+            popped = memory_rels[idx].pop(selected_box_idx)
+            deleted_rels[idx].append(popped)
+            if len(memory_rels[idx]) == 0:
+                selected_box_idx = 0
+            else:
+                selected_box_idx = min(selected_box_idx, len(memory_rels[idx]) - 1)
+    elif key == ord('u') and mode_deleted:
+        if selected_box_idx < len(deleted_rels[idx]):
+            popped = deleted_rels[idx].pop(selected_box_idx)
+            memory_rels[idx].append(popped)
+            if len(deleted_rels[idx]) == 0:
+                selected_box_idx = 0
+            else:
+                selected_box_idx = min(selected_box_idx, len(deleted_rels[idx]) - 1)
+    elif key == ord('e'):
+        out_dir = input("📂 Chemin pour exporter le dataset corrigé : ").strip()
+        export_corrected_dataset(out_dir, annotated_images, memory_rels, categories)
+
+# ------------------- SAUVEGARDE -------------------
+with open(state_file, "w", encoding="utf-8") as f:
+    json.dump({
+        "memory_rels": memory_rels,
+        "deleted_rels": deleted_rels,
+        "idx": idx
+    }, f, indent=2)
+print(f"✅ Progression sauvegardée dans {os.path.basename(state_file)}")
+cv2.destroyAllWindows()
