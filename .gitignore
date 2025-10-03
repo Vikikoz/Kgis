@@ -1,0 +1,9 @@
+# Ignorer l'environnement conda
+env/
+
+# Ignorer l'environnement venv si tu le gardes temporairement
+venv/
+
+# Ignorer les fichiers pyc ou __pycache__
+__pycache__/
+*.pyc
